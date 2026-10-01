@@ -35,7 +35,7 @@ import cyano.lootable.LootableBodies;
 public class EntityLootableBody extends net.minecraft.entity.EntityLiving implements IInventory{
 
 	public static final int INVENTORY_SIZE = 9*6;
-	public static int additionalItemDamage = 10;
+	public static int additionalItemDamage = 0;
 	public static float corpseHP = 40;
 	public static boolean hurtByFire = false;
 	public static boolean hurtByBlast = false;
@@ -69,7 +69,7 @@ public class EntityLootableBody extends net.minecraft.entity.EntityLiving implem
 	public EntityLootableBody(World w) {
 		super(w);
 		this.setSize(0.85f, 0.75f);
-		this.isImmuneToFire = (!hurtByFire) || invulnerable;
+		this.isImmuneToFire = !hurtByFire && !hurtByAll;
 		vacuumTime = 0;
 		this.getDataWatcher().addObject(WATCHER_ID_OWNER, "");
 	}
@@ -127,6 +127,11 @@ public class EntityLootableBody extends net.minecraft.entity.EntityLiving implem
 		this.getDataWatcher().updateObject(WATCHER_ID_OWNER, "");
 	}
 	}
+
+	public void setOwnerWithoutLookup(GameProfile gp){
+		owner = gp;
+		this.getDataWatcher().updateObject(WATCHER_ID_OWNER, gp != null && gp.getName() != null ? gp.getName() : "");
+	}
 	
 	public GameProfile getOwner(){
 		if(owner == null){
@@ -166,17 +171,25 @@ public class EntityLootableBody extends net.minecraft.entity.EntityLiving implem
 	@Override
     public void onEntityUpdate() {
 		super.onEntityUpdate();
-		if(LootableBodies.allowCorpseDecay && !this.worldObj.isRemote && worldObj.getWorldTime() % 20 == 0 ){
+		if(LootableBodies.allowCorpseDecay && !this.worldObj.isRemote && worldObj.getTotalWorldTime() % 20 == 0 ){
 			// count-down decay timer
+			long now = worldObj.getTotalWorldTime();
+			if(this.deathTimestamp > now){
+				// Older corpses can have no DeathTime; begin their timer now.
+				this.deathTimestamp = now;
+			}
+			if(LootableBodies.decayOnlyWhenEmpty && !auxInventory.isEmpty()){
+				this.deathTimestamp = now;
+			}
 			if(LootableBodies.decayOnlyWhenEmpty){
 				 for(int i = 0; i < this.equipment.length; i++){
 				 if(this.equipment[i] != null){
-				 this.deathTimestamp = worldObj.getTotalWorldTime();
+				 this.deathTimestamp = now;
 				 break;
 				 }
 				 }
 				 }
-			if((worldObj.getTotalWorldTime() - this.deathTimestamp) > LootableBodies.corpseDecayTime){
+			if((now - this.deathTimestamp) >= LootableBodies.corpseDecayTime){
 				this.dropEquipment(true, 0);
 				this.kill();
 			}
@@ -401,11 +414,13 @@ public class EntityLootableBody extends net.minecraft.entity.EntityLiving implem
     		super.damageEntity(src,amount);
     		return;
     	}
-    	// use shovel to dispose the body
+		// use shovel to dispose the body
+		boolean shovelHit = false;
     	if(src.getEntity() != null && src.getEntity() instanceof EntityPlayer && ((EntityPlayer)src.getEntity()).getHeldItem() != null){
     		ItemStack itemStack = ((EntityPlayer)src.getEntity()).getHeldItem();
     		Item item = itemStack.getItem();
     		if(item instanceof net.minecraft.item.ItemSpade || item.getHarvestLevel(itemStack, "shovel") >= 0){
+				shovelHit = true;
     			shovelHits++;
     			super.damageEntity(src,amount);
     			if(shovelHits >= shovelHitLimit){
@@ -424,17 +439,20 @@ public class EntityLootableBody extends net.minecraft.entity.EntityLiving implem
     		 jumpOutOfWall();
     	 }
     	
-    	// special cases handled before this point
-    	// general cases:
-    	if(invulnerable) return;
-    	if(this.hurtByAll) super.damageEntity(src, amount);
-    	if(src.getEntity() != null && src.getEntity() instanceof EntityLivingBase && this.hurtByWeapons) super.damageEntity(src, amount);
-    	if(src.isFireDamage() && this.hurtByFire) super.damageEntity(src, amount);
-    	if(src.isExplosion() && this.hurtByBlast) super.damageEntity(src, amount);
-    	if(src == DamageSource.fall && this.hurtByFall) super.damageEntity(src, amount);
-    	if(src == DamageSource.cactus && this.hurtByCactus) super.damageEntity(src, amount);
-    	if(src == DamageSource.inWall && this.hurtByBlockSuffocation) super.damageEntity(src, amount);
-    	if(this.hurtByOther) super.damageEntity(src, amount);
+	// Apply each accepted hit once. "Other" only covers sources outside the
+	// named categories, regardless of which categories are enabled.
+	boolean weaponDamage = src.getEntity() instanceof EntityLivingBase;
+	boolean knownDamage = weaponDamage || src.isFireDamage() || src.isExplosion()
+			|| src == DamageSource.fall || src == DamageSource.cactus || src == DamageSource.inWall;
+	boolean acceptedDamage = hurtByAll
+			|| (weaponDamage && hurtByWeapons)
+			|| (src.isFireDamage() && hurtByFire)
+			|| (src.isExplosion() && hurtByBlast)
+			|| (src == DamageSource.fall && hurtByFall)
+			|| (src == DamageSource.cactus && hurtByCactus)
+			|| (src == DamageSource.inWall && hurtByBlockSuffocation)
+			|| (!knownDamage && hurtByOther);
+	if(!shovelHit && !invulnerable && acceptedDamage) super.damageEntity(src, amount);
     	
     	// He's dead, Jim
     	 if(super.getHealth() <= 0){

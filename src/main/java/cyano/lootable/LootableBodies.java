@@ -6,7 +6,6 @@ import net.minecraft.item.Item;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.common.config.Configuration;
 import cpw.mods.fml.common.Mod;
-import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.FMLLog;
 import cpw.mods.fml.common.Mod.EventHandler;
 import cpw.mods.fml.common.SidedProxy;
@@ -43,7 +42,7 @@ public class LootableBodies {
     	// load config
     	Configuration config = new Configuration(event.getSuggestedConfigurationFile());
     	config.load();
-    	EntityLootableBody.additionalItemDamage = config.getInt("item_damage_on_death", "options", 32, 0,1000,
+		EntityLootableBody.additionalItemDamage = config.getInt("item_damage_on_death", "options", 0, 0,1000,
     			"The amount of damage suffered by damageable items when you \n"
     					+ "die, to a minimum of 1 durability remaining (items will \n"
     					+ "not be destroyed).");
@@ -104,8 +103,8 @@ public class LootableBodies {
     			+ "option, you will probably want to also disable the \n"
     			+ "add_bones_to_corpse option.");
     	String decayTime = config.getString("corpse_decay_time", "corpse decay", "1:00:00",
-    			"Time after death before a corpse will self-destruct (if the \n"
-    					+ "enable_corpse_decay option is set to true). \n"
+			"Time after death, or after the corpse becomes empty when \n"
+					+ "empty_only_decay is true, before it self-destructs. \n"
     					+ "The format is hours:minutes:seconds or just hours:minutes");
     	corpseDecayTime = Math.max(parseTimeInSeconds(decayTime),2)*20; // 2 second minimum
 	    eioSoulboundID = config.get("options", "eio_Soulbound_id", -1, "EnderIO Soulbound enchantment id").getInt();
@@ -133,7 +132,6 @@ public class LootableBodies {
 		
 		// register handlers
 		MinecraftForge.EVENT_BUS.register(new PlayerDeathEventHandler());
-		FMLCommonHandler.instance().bus().register(new PlayerDeathEventHandler());
  		
 		proxy.init(event);
 		
