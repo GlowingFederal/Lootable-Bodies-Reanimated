@@ -1,6 +1,6 @@
 [
 {
-  "modid": "lootable",
+  "modid": "lootablebodies",
   "name": "DrCyano's Lootable Bodies",
   "description": "Saves your items when you die in a container so that you can get your items back when you return.",
   "version": "${version}",
